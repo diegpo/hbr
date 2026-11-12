@@ -1,4 +1,5 @@
 import os
+import streamlit as st
 from dotenv import load_dotenv
 import ollama
 
@@ -7,13 +8,12 @@ load_dotenv()
 host_servidor = os.getenv('OLLAMA_HOST')
 modelo_padrao = os.getenv('OLLAMA_MODEL')
 
-# Conexão com o servidor remoto
+# Desabilita verificação SSL conforme exigido no item 1.1 do guia
 llm = ollama.Client(
     host=host_servidor,
-    headers={'ngrok-skip-browser-warning': 'true'}
+    verify=False
 )
 
-# 1. Base de conhecimento documentada de exemplo
 CONHECIMENTO_PROTHEUS = """
 Para configurar o WebService REST no Protheus:
 1. Abra o arquivo appserver.ini.
@@ -23,7 +23,6 @@ Para configurar o WebService REST no Protheus:
 URL padrão de teste: http://localhost:8084/rest
 """
 
-# 2. Instrução do sistema fechada
 INSTRUCAO_SISTEMA = """
 Você é um especialista em suporte cloud do Protheus.
 Sua regra absoluta: responda com base ESTRITAMENTE no contexto fornecido na mensagem do usuário.
@@ -34,53 +33,21 @@ Sua regra absoluta: responda com base ESTRITAMENTE no contexto fornecido na mens
 - Preserve exatamente a grafia (maiúsculas/minúsculas) de chaves, seções e parâmetros.
 """
 
-print(f"--- Chat iniciado com {modelo_padrao} ---")
-print("Digite 'sair' a qualquer momento para encerrar.\n")
+st.title("Suporte Cloud Protheus")
 
-while True:
-    try:
-        mensagem_usuario = input("Digite aqui: ")
+pergunta = st.chat_input("Envie a sua mensagem...")
 
-        if not mensagem_usuario.strip():
-            continue
-
-        if mensagem_usuario.lower() in ['sair', 'exit', 'quit']:
-            print("Encerrando o chat. Até logo!")
-            break
-
-        # 3. Monta o prompt blindado com contexto + pergunta atual
-        prompt_blindado = f"""Use APENAS as informações dentro da tag <contexto> para responder à pergunta.
-Se a resposta exata não estiver escrita dentro de <contexto>, responda exclusivamente: "Não tenho essa informação na minha base de conhecimento."
-Não use seu conhecimento prévio da internet.
-
-<contexto>
-{CONHECIMENTO_PROTHEUS}
-</contexto>
-
-Pergunta: {mensagem_usuario}"""
-
-        print("\nResposta da IA: ", end="", flush=True)
-
-        # Ilusão para modelos que executam localmente para teste
-        stream = llm.chat(
-            model=modelo_padrao,
-            messages=[
-                {'role': 'system', 'content': INSTRUCAO_SISTEMA},
-                {'role': 'user', 'content': prompt_blindado}
-            ],
-            options={
-                'temperature': 0.0  # Trava a criatividade para evitar alucinações
-            },
-            stream=True
-        )
-
-        for chunk in stream:
-            print(chunk['message']['content'], end="", flush=True)
-
-        print("\n" + "-" * 40 + "\n")
-
-    except KeyboardInterrupt:
-        print("\nEncerrando o chat...")
-        break
-    except Exception as erro:
-        print(f"\nErro de conexão: {erro}\n")
+if pergunta:
+    st.chat_message("user").write(pergunta)
+    
+    mensagem_completa = f"Contexto:\n{CONHECIMENTO_PROTHEUS}\n\nPergunta: {pergunta}"
+    
+    resposta = llm.chat(
+        model=modelo_padrao,
+        messages=[
+            {"role": "system", "content": INSTRUCAO_SISTEMA},
+            {"role": "user", "content": mensagem_completa}
+        ]
+    )
+    
+    st.chat_message("assistant").write(resposta['message']['content'])

@@ -17,3 +17,6 @@ __pycache__/
 # Arquivos do sistema operacional
 .DS_Store
 Thumbs.db
+
+# Ficheiros de imagem Docker exportados
+*.tar

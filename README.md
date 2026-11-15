@@ -1,60 +1,100 @@
-# hbr
-Curso Instituto hardware br.
-
 # Assistente Técnico TOTVS Protheus (RAG)
 
-Assistente virtual em Python focado em suporte técnico para configuração do TOTVS Protheus. Utiliza arquitetura desacoplada e injeção estrita de contexto (RAG) para responder de forma objetiva, rápida e sem alucinações.
+> Projeto do curso **Instituto Hardware BR**.
+
+Assistente virtual em Python focado em suporte técnico para configuração do **TOTVS Protheus**. Utiliza arquitetura desacoplada e injeção estrita de contexto (RAG) para responder de forma objetiva, rápida e **sem alucinações**.
 
 ## Arquitetura
 
-- **Cliente:** Aplicação CLI em Python com streaming de resposta (`stream=True`) e temperatura travada em `0.0` para máxima fidelidade à base de conhecimento.
-- **Inferência (LLM):** Desacoplada via API. Na configuração atual para desenvolvimento e testes, utiliza o [Ollama](https://ollama.com/) rodando localmente ou remotamente (ex: Google Colab via túnel Ngrok). Como a lógica de RAG e as regras de contexto são independentes do motor de inferência, o projeto pode ser facilmente adaptado para outros provedores de LLM (OpenAI, Gemini API, Groq, LM Studio, etc.).
+- **Interface:** aplicação web em Python com chat, construída com [Streamlit](https://streamlit.io/). Abre no navegador.
+- **Fidelidade à base de conhecimento:** temperatura travada em `0.0` e regras no prompt que obrigam o modelo a responder somente com o contexto fornecido.
+- **Inferência (LLM):** desacoplada via API. O endereço do servidor e o modelo são definidos por variáveis de ambiente (`LLM_HOST` e `LLM_MODEL`), então o servidor pode ser local ou remoto (ex.: Google Colab via túnel) sem alterar o código.
+- **Resiliência:** a chamada ao servidor tem tempo limite (5 s para conectar, 120 s para responder) e erros de conexão, timeout e resposta são tratados com mensagens claras na tela.
 
-## Pré-requisitos
+## ✅ Pré-requisitos
 
 - Python 3.10 ou superior
-- Instância do **Ollama** em execução (local ou remota para testes) com um modelo instalado (ex: `qwen2.5:7b` ou `llama3.2:3b`).
+- Um servidor de LLM em execução (local ou remoto), acessível pela rede, com um modelo instalado (ex.: `qwen2.5:7b`)
 
-## Instalação e Configuração
+## ⚙️ Instalação e configuração
 
 1. **Clone o repositório:**
+
    ```bash
-   git clone [https://github.com/diegpo/hbr.git](https://github.com/diegpo/hbr.git)
+   git clone https://github.com/diegpo/hbr.git
    cd hbr
+   ```
 
-    Crie e ative o ambiente virtual:
-    Bash
+2. **Crie e ative o ambiente virtual:**
 
-    python3 -m venv venv
-    source venv/bin/activate  # Linux/WSL/macOS
-    # No Windows: venv\Scripts\activate
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate   # Linux/WSL/macOS
+   # No Windows: venv\Scripts\activate
+   ```
 
-    Instale as dependências:
-    Bash
+3. **Instale as dependências:**
 
-    pip install -r requirements.txt
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-    Configure as variáveis de ambiente:
-    Crie um arquivo .env na raiz do projeto com o endereço do seu servidor Ollama e o modelo desejado:
-    Snippet de código
+4. **Configure as variáveis de ambiente.** Copie o arquivo de exemplo e ajuste os valores:
 
-    OLLAMA_HOST=http://localhost:11434
-    OLLAMA_MODEL=qwen2.5:7b
+   ```bash
+   cp .env.example .env
+   ```
 
-    
-Como Testar
+   Conteúdo do `.env`:
 
-    Certifique-se de que o servidor Ollama está ativo e acessível.
+   ```env
+   LLM_HOST=http://localhost:11434
+   LLM_MODEL=qwen2.5:7b
+   ```
 
-    Execute o script principal:
-    Bash
+   | Variável    | O que é                                   |
+   | ----------- | ----------------------------------------- |
+   | `LLM_HOST`  | Endereço do servidor de LLM               |
+   | `LLM_MODEL` | Nome do modelo que será usado nas respostas |
 
-    python main.py
+   > ⚠️ O arquivo `.env` não é enviado ao GitHub (está no `.gitignore`). Se o endereço do servidor mudar, basta editar o `.env`.
 
-    Teste o comportamento do assistente fazendo perguntas no terminal:
+## ▶️ Como executar
 
-        Pergunta dentro da base de conhecimento: "Qual seção do appserver.ini configuro para o REST?" -> Deve responder de forma direta usando apenas os dados cadastrados.
+```bash
+streamlit run main.py
+```
 
-        Pergunta fora da base de conhecimento: "Como configurar o e-mail no Protheus?" -> Deve recusar responder ("Não tenho essa informação na minha base de conhecimento."), validando o bloqueio contra alucinações.
+O navegador abrirá o chat (normalmente em `http://localhost:8501`). Para encerrar, pressione `Ctrl + C` no terminal.
 
-    Digite sair ou pressione Ctrl + C para encerrar.
+## 🐳 Executando com Docker
+
+```bash
+docker build -t hbr .
+docker run --rm -p 8080:80 --env-file .env hbr
+```
+
+Depois acesse `http://localhost:8080`.
+
+> Dentro do container, `localhost` aponta para o próprio container. Se o servidor de LLM roda na sua máquina, use o endereço dela (ou `host.docker.internal`) no `LLM_HOST`.
+
+## 🧪 Como testar
+
+Com o servidor de LLM ativo, faça estas perguntas no chat:
+
+| Tipo de pergunta | Exemplo | Resultado esperado |
+| --- | --- | --- |
+| Dentro da base de conhecimento | "Qual seção do appserver.ini configuro para o REST?" | Resposta direta usando apenas os dados cadastrados (`[HTTPREST]`). |
+| Fora da base de conhecimento | "Como configurar o e-mail no Protheus?" | `Não tenho essa informação na minha base de conhecimento.` |
+| Servidor indisponível | Coloque um `LLM_HOST` inválido no `.env` | Aviso de falha de conexão em poucos segundos, sem travar. |
+
+## 📁 Estrutura do projeto
+
+```text
+hbr/
+├── main.py            # Aplicação (interface, prompt e chamada ao servidor de LLM)
+├── requirements.txt   # Dependências Python
+├── Dockerfile         # Imagem para executar em container
+├── .env.example       # Modelo do arquivo de variáveis de ambiente
+└── README.md
+```

@@ -1,0 +1,11 @@
+.env
+venv/
+.venv/
+env/
+__pycache__/
+*.py[cod]
+.git/
+.gitignore
+.vscode/
+README.md
+*.tar

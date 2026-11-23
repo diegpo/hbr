@@ -113,7 +113,7 @@ if pergunta:
             "O servidor demorou demais para responder. "
             "Verifique se a llm está ativa e tente novamente."
         )
-    except ConnectionError:
+    except (ConnectionError, httpx.ConnectError):
         st.error(
             "🔌 Não consegui conectar na LLM interna. Verifique se ela está rodando "
             "e se o endereço HOST no arquivo .env está correto "

@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 import httpx
 import streamlit as st
 from dotenv import load_dotenv
@@ -10,50 +11,87 @@ host_servidor = os.getenv('LLM_HOST')
 modelo_padrao = os.getenv('LLM_MODEL')
 
 # Tempo máximo (em segundos) que o programa espera antes de desistir.
-# - CONEXAO: quanto esperar para "bater na porta" do servidor llm registrada
-#   Se o servidor estiver fora do ar, descobrimos rápido (5s) em vez de esperar minutos.
-# - RESPOSTA: quanto esperar o modelo gerar a resposta depois de conectado.
-#   Fica mais alto porque o modelo pode demorar de verdade para "pensar".
 TIMEOUT_CONEXAO = 5.0
 TIMEOUT_RESPOSTA = 120.0
 
-# Desabilita verificação SSL conforme exigido no item 1.1 do guia
-llm = ollama.Client(
-    host=host_servidor,
-    verify=False,
-    timeout=httpx.Timeout(TIMEOUT_RESPOSTA, connect=TIMEOUT_CONEXAO)
-)
+# --- CACHE DO CLIENTE LLM ---
+@st.cache_resource
+def iniciar_cliente_llm():
+    return ollama.Client(
+        host=host_servidor,
+        verify=False,
+        timeout=httpx.Timeout(TIMEOUT_RESPOSTA, connect=TIMEOUT_CONEXAO)
+    )
 
-CONHECIMENTO_PROTHEUS = """
-Para configurar o WebService REST no Protheus:
-1. Abra o arquivo appserver.ini.
-2. Adicione a seção [HTTPREST] com a porta desejada, ex: Port=8084.
-3. Adicione a chave [ONSTART] com jobs=HTTPJOB.
-4. Reinicie o serviço do Appserver.
-URL padrão de teste: http://localhost:8084/rest
-"""
+llm = iniciar_cliente_llm()
+
+# --- LEITURA RECURSIVA DA BASE DE CONHECIMENTO ---
+@st.cache_data
+def carregar_base_conhecimento(pasta_raiz="base_conhecimento"):
+    caminho = Path(pasta_raiz)
+    
+    # Se a pasta ainda não existir, cria automaticamente para evitar erro
+    if not caminho.exists():
+        caminho.mkdir(parents=True, exist_ok=True)
+        return ""
+
+    textos_coletados = []
+    extensoes_validas = {".txt", ".md"}
+
+    # rglob("*") varre a pasta raiz e TODAS as subpastas recursivamente
+    for arquivo in sorted(caminho.rglob("*")):
+        if arquivo.is_file() and arquivo.suffix.lower() in extensoes_validas:
+            conteudo = arquivo.read_text(encoding="utf-8").strip()
+            if conteudo:
+                # Identifica a origem (ex: webservice/configurar_rest.md) para ajudar o modelo
+                caminho_relativo = arquivo.relative_to(caminho)
+                textos_coletados.append(f"--- DOCUMENTO: {caminho_relativo} ---\n{conteudo}")
+
+    return "\n\n".join(textos_coletados)
+
+CONHECIMENTO_PROTHEUS = carregar_base_conhecimento()
 
 INSTRUCAO_SISTEMA = """
 Você é um especialista em suporte cloud do Protheus.
-Sua regra absoluta: responda com base ESTRITAMENTE no contexto fornecido na mensagem do usuário.
+Sua regra absoluta: responda com base ESTRITAMENTE no contexto fornecido na mensagem do usuário (incluindo perguntas sobre quem você é ou o que você faz).
 - Seja o mais direto, simples e conciso possível.
 - Responda apenas o que foi perguntado, em poucas linhas ou passos curtos.
 - Não faça introduções desnecessárias, não cumprimente longamente e não escreva conclusões.
+- Nunca diga "Com base no contexto" ou "De acordo com os documentos"; apenas entregue a resposta diretamente.
 - Seja polido, mas breve.
 - Preserve exatamente a grafia (maiúsculas/minúsculas) de chaves, seções e parâmetros.
-- Se a resposta NÃO estiver no contexto, responda somente: "Não tenho essa informação na minha base de conhecimento."
+- Use a frase "Não tenho essa informação na minha base de conhecimento." SOMENTE se a resposta for totalmente ausente (nunca a misture no final de uma resposta válida).
 - Nunca use conhecimento externo, nunca invente seções, chaves ou passos e nunca dê sugestões fora do contexto.
 """
 
+
 st.title("Suporte Cloud Protheus")
+
+# Barra lateral útil para manutenção da base
+with st.sidebar:
+    st.header("Base de Conhecimento")
+    if not CONHECIMENTO_PROTHEUS:
+        st.warning("Nenhum arquivo .txt ou .md encontrado na pasta 'base_conhecimento'.")
+    else:
+        st.success("Base carregada com sucesso.")
+    
+    if st.button("Recarregar arquivos"):
+        carregar_base_conhecimento.clear()
+        st.rerun()
+
+# --- HISTÓRICO ---
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+
+for msg in st.session_state.messages:
+    st.chat_message(msg["role"]).write(msg["content"])
 
 pergunta = st.chat_input("Envie a sua mensagem...")
 
 if pergunta:
     st.chat_message("user").write(pergunta)
+    st.session_state.messages.append({"role": "user", "content": pergunta})
     
-    # Repetimos a regra junto da pergunta: modelos pequenos (7B) "esquecem" mais
-    # facilmente instruções que ficam só no início da conversa.
     mensagem_completa = (
         f"Contexto:\n{CONHECIMENTO_PROTHEUS}\n\n"
         f"Pergunta: {pergunta}\n\n"
@@ -61,8 +99,6 @@ if pergunta:
         "nele, diga exatamente: Não tenho essa informação na minha base de conhecimento."
     )
     
-    # "try" = tente fazer isto. Se algo der errado, o Python pula para um "except"
-    # (em vez de travar ou mostrar um erro gigante para o usuário).
     try:
         resposta = llm.chat(
             model=modelo_padrao,
@@ -70,24 +106,21 @@ if pergunta:
                 {"role": "system", "content": INSTRUCAO_SISTEMA},
                 {"role": "user", "content": mensagem_completa}
             ],
-            # temperature = "criatividade" do modelo. 0.0 = o mais fiel e previsível possível.
             options={"temperature": 0.0}
         )
     except httpx.TimeoutException:
-        # Passou do tempo limite (conexão ou resposta demorou demais).
         st.error(
             "O servidor demorou demais para responder. "
             "Verifique se a llm está ativa e tente novamente."
         )
     except ConnectionError:
-        # Não conseguiu nem conectar: llm desligada
         st.error(
             "🔌 Não consegui conectar na LLM interna. Verifique se ela está rodando "
             "e se o endereço HOST no arquivo .env está correto "
         )
     except ollama.ResponseError as erro:
-        # O servidor respondeu, mas com erro
         st.error(f"O servidor respondeu com erro ({erro.status_code}): {erro.error}")
     else:
-        # "else" só roda se o "try" funcionou sem nenhum erro.
-        st.chat_message("assistant").write(resposta['message']['content'])
+        texto_resposta = resposta['message']['content']
+        st.chat_message("assistant").write(texto_resposta)
+        st.session_state.messages.append({"role": "assistant", "content": texto_resposta})

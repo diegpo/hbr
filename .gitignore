@@ -20,3 +20,9 @@ Thumbs.db
 
 # Ficheiros de imagem Docker exportados
 *.tar
+
+# Ignora tudo dentro da pasta e subpastas de conhecimento
+base_conhecimento/*
+
+# Libera apenas o arquivo de exemplo para ir para o Git
+!base_conhecimento/exemplo_apresentacao.md

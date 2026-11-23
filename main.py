@@ -62,6 +62,7 @@ Sua regra absoluta: responda com base ESTRITAMENTE no contexto fornecido na mens
 - Preserve exatamente a grafia (maiúsculas/minúsculas) de chaves, seções e parâmetros.
 - Use a frase "Não tenho essa informação na minha base de conhecimento." SOMENTE se a resposta for totalmente ausente (nunca a misture no final de uma resposta válida).
 - Nunca use conhecimento externo, nunca invente seções, chaves ou passos e nunca dê sugestões fora do contexto.
+- Se o usuário apenas cumprimentar ou pedir ajuda sem especificar o tema (ex.: 'Oi', 'Me ajude'), responda brevemente perguntando qual configuração ou dúvida do Protheus ele precisa.
 """
 
 
@@ -94,9 +95,7 @@ if pergunta:
     
     mensagem_completa = (
         f"Contexto:\n{CONHECIMENTO_PROTHEUS}\n\n"
-        f"Pergunta: {pergunta}\n\n"
-        "Responda somente com base no Contexto acima. Se a resposta não estiver "
-        "nele, diga exatamente: Não tenho essa informação na minha base de conhecimento."
+        f"Pergunta: {pergunta}"
     )
     
     try:

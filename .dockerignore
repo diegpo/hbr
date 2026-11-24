@@ -9,3 +9,5 @@ __pycache__/
 .vscode/
 README.md
 *.tar
+tests/
+.pytest_cache/

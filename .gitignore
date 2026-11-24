@@ -10,6 +10,7 @@ env/
 __pycache__/
 *.py[cod]
 *$py.class
+.pytest_cache/
 
 # Configurações do VS Code
 .vscode/
